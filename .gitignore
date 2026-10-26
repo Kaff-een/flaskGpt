@@ -1,0 +1,16 @@
+# Environnement
+.env
+.venv/
+__pycache__/
+*.py[cod]
+
+# Base et fichiers importés
+data/
+uploads/
+
+# Node
+node_modules/
+
+# Système
+.DS_Store
+Thumbs.db

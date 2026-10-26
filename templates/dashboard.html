@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}Performance & qualité — FlaskGPT{% endblock %}
+
+{% block content %}
+<div class="min-h-[100dvh] overflow-y-auto">
+    <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div class="flex items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
+            <button type="button" data-action="open-sidebar"
+                    class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden" aria-label="Ouvrir le menu">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
+            <div class="min-w-0 flex-1">
+                <h2 class="text-lg font-bold text-slate-900">Performance & qualité</h2>
+                <p class="text-[11px] text-slate-400">Temps de réponse, consommation de tokens, évaluations et fiabilité.</p>
+            </div>
+            <button type="button" onclick="window.print()"
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 8V3h10v5M7 18H5a2 2 0 01-2-2v-4a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2h-2"/><path stroke-linecap="round" stroke-linejoin="round" d="M7 14h10v7H7z"/></svg>
+                Imprimer
+            </button>
+        </div>
+    </header>
+
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div class="kpi-card">
+                <p class="kpi-label">Temps moyen</p>
+                <p class="kpi-value">{{ (stats.avg_duration_ms / 1000)|round(1) }}<span class="kpi-unit">s</span></p>
+                <p class="kpi-hint">p50 {{ (stats.p50_duration_ms / 1000)|round(1) }} s · p95 {{ (stats.p95_duration_ms / 1000)|round(1) }} s</p>
+            </div>
+            <div class="kpi-card">
+                <p class="kpi-label">Tokens consommés</p>
+                <p class="kpi-value">{{ '{:,}'.format(stats.total_tokens).replace(',', ' ') }}</p>
+                <p class="kpi-hint">{{ stats.avg_tokens }} tokens / réponse · {{ stats.tokens_per_second }} tok/s</p>
+            </div>
+            <div class="kpi-card">
+                <p class="kpi-label">Qualité perçue</p>
+                <p class="kpi-value">{{ stats.rating_avg if stats.rating_avg is not none else '—' }}{% if stats.rating_avg is not none %}<span class="kpi-unit">/5</span>{% endif %}</p>
+                <p class="kpi-hint">{{ stats.rated_count }} réponse(s) évaluée(s)</p>
+            </div>
+            <div class="kpi-card">
+                <p class="kpi-label">Taux de réussite</p>
+                <p class="kpi-value">{{ stats.success_rate }}<span class="kpi-unit">%</span></p>
+                <p class="kpi-hint">{{ stats.errors }} erreur(s) · {{ stats.assistant_messages }} réponse(s)</p>
+            </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Activité des 14 derniers jours</h3>
+                        <p class="panel-subtitle">Messages échangés et volume de tokens.</p>
+                    </div>
+                    <span class="badge-soft">{{ stats.messages }} messages</span>
+                </div>
+                {% set max_daily = (stats.daily|map(attribute='messages')|max) if stats.daily else 1 %}
+                <div class="flex h-44 items-end gap-1.5 px-1 pt-4">
+                    {% for day in stats.daily %}
+                        {% set height = (day.messages / max_daily * 100) if max_daily else 0 %}
+                        <div class="group relative flex h-full flex-1 flex-col justify-end">
+                            <div class="w-full rounded-t-md bg-gradient-to-t from-indigo-500 to-violet-400 transition group-hover:from-indigo-600 group-hover:to-violet-500"
+                                 style="height: {{ [height, 4]|max }}%"></div>
+                            <span class="mt-1 truncate text-center text-[8px] text-slate-400">{{ day.day[5:] }}</span>
+                            <div class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:block">
+                                {{ day.day }} · {{ day.messages }} msg · {{ day.tokens }} tok
+                            </div>
+                        </div>
+                    {% else %}
+                        <p class="w-full self-center text-center text-xs text-slate-400">Aucune activité enregistrée.</p>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Évaluation des réponses</h3>
+                        <p class="panel-subtitle">Répartition des notes attribuées par l'utilisateur.</p>
+                    </div>
+                    <span class="badge-soft">Code couleur</span>
+                </div>
+                {% set total_rated = stats.rating_distribution.satisfaisante + stats.rating_distribution.moyenne + stats.rating_distribution.insuffisante %}
+                <div class="space-y-4 pt-3">
+                    <div>
+                        <div class="mb-1 flex items-center justify-between text-xs">
+                            <span class="flex items-center gap-2 font-medium text-slate-700"><span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>Satisfaisantes</span>
+                            <span class="font-bold text-slate-700">{{ stats.rating_distribution.satisfaisante }}</span>
+                        </div>
+                        <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div class="h-full rounded-full bg-emerald-500" style="width: {{ (stats.rating_distribution.satisfaisante / total_rated * 100) if total_rated else 0 }}%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="mb-1 flex items-center justify-between text-xs">
+                            <span class="flex items-center gap-2 font-medium text-slate-700"><span class="h-2.5 w-2.5 rounded-full bg-amber-400"></span>Moyennes</span>
+                            <span class="font-bold text-slate-700">{{ stats.rating_distribution.moyenne }}</span>
+                        </div>
+                        <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div class="h-full rounded-full bg-amber-400" style="width: {{ (stats.rating_distribution.moyenne / total_rated * 100) if total_rated else 0 }}%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="mb-1 flex items-center justify-between text-xs">
+                            <span class="flex items-center gap-2 font-medium text-slate-700"><span class="h-2.5 w-2.5 rounded-full bg-rose-500"></span>Insuffisantes</span>
+                            <span class="font-bold text-slate-700">{{ stats.rating_distribution.insuffisante }}</span>
+                        </div>
+                        <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div class="h-full rounded-full bg-rose-500" style="width: {{ (stats.rating_distribution.insuffisante / total_rated * 100) if total_rated else 0 }}%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4 text-center">
+                    <div>
+                        <p class="text-lg font-bold text-slate-800">{{ stats.conversations }}</p>
+                        <p class="text-[10px] uppercase tracking-wide text-slate-400">Conversations</p>
+                    </div>
+                    <div>
+                        <p class="text-lg font-bold text-slate-800">{{ stats.datasets }}</p>
+                        <p class="text-[10px] uppercase tracking-wide text-slate-400">Jeux de données</p>
+                    </div>
+                    <div>
+                        <p class="text-lg font-bold text-slate-800">{{ stats.sources }}</p>
+                        <p class="text-[10px] uppercase tracking-wide text-slate-400">Sources</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <section class="panel mt-4">
+            <div class="panel-header">
+                <div>
+                    <h3 class="panel-title">Comparaison des dernières réponses</h3>
+                    <p class="panel-subtitle">Temps, tokens et note pour chaque réponse générée.</p>
+                </div>
+                <span class="badge-soft">{{ stats.recent_messages|length }} dernières</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Qualité</th>
+                            <th>Conversation</th>
+                            <th>Extrait de la réponse</th>
+                            <th class="text-right">Temps</th>
+                            <th class="text-right">Tokens</th>
+                            <th class="text-right">Note</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for message in stats.recent_messages %}
+                            <tr>
+                                <td>
+                                    {% if message.rating_label == 'satisfaisante' %}
+                                        <span class="quality-dot bg-emerald-500" title="Satisfaisante"></span>
+                                    {% elif message.rating_label == 'moyenne' %}
+                                        <span class="quality-dot bg-amber-400" title="Moyenne"></span>
+                                    {% elif message.rating_label == 'insuffisante' %}
+                                        <span class="quality-dot bg-rose-500" title="Insuffisante"></span>
+                                    {% elif message.error_code %}
+                                        <span class="quality-dot bg-slate-400" title="Erreur"></span>
+                                    {% else %}
+                                        <span class="quality-dot bg-slate-200" title="Non évaluée"></span>
+                                    {% endif %}
+                                </td>
+                                <td class="max-w-[12rem]">
+                                    <a href="/?c={{ message.conversation_id }}" class="block truncate font-medium text-indigo-600 hover:text-indigo-800">{{ message.conversation_title }}</a>
+                                    <span class="text-[10px] text-slate-400">{{ message.domain_label or '—' }}</span>
+                                </td>
+                                <td class="max-w-[24rem]">
+                                    <span class="line-clamp-2 text-xs text-slate-500">{{ message.excerpt or '—' }}</span>
+                                </td>
+                                <td class="text-right text-xs font-medium">{{ (message.duration_ms / 1000)|round(1) }} s</td>
+                                <td class="text-right text-xs font-medium">{{ message.total_tokens }}</td>
+                                <td class="text-right text-xs font-semibold {{ 'text-emerald-600' if message.rating and message.rating >= 4 else 'text-amber-600' if message.rating == 3 else 'text-rose-600' if message.rating else 'text-slate-400' }}">
+                                    {{ message.rating ~ '/5' if message.rating else '—' }}
+                                </td>
+                                <td class="whitespace-nowrap text-[10px] text-slate-400">{{ message.created_at[:16].replace('T', ' ') }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="7" class="py-8 text-center text-xs text-slate-400">Aucune réponse enregistrée.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="mt-4 grid gap-4 lg:grid-cols-5">
+            <section class="panel lg:col-span-3">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Conversations les plus consommatrices</h3>
+                        <p class="panel-subtitle">Classement par volume de tokens.</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table">
+                        <thead><tr><th>Conversation</th><th>Domaine</th><th class="text-right">Messages</th><th class="text-right">Tokens</th><th class="text-right">Note</th></tr></thead>
+                        <tbody>
+                            {% for item in stats.top_conversations %}
+                                <tr>
+                                    <td><a href="/?c={{ item.id }}" class="font-medium text-indigo-600 hover:text-indigo-800">{{ item.title }}</a></td>
+                                    <td class="text-xs text-slate-500">{{ item.domain_label or item.domain }}</td>
+                                    <td class="text-right text-xs">{{ item.message_count }}</td>
+                                    <td class="text-right text-xs font-semibold">{{ item.total_tokens }}</td>
+                                    <td class="text-right text-xs">{{ item.rating_avg or '—' }}</td>
+                                </tr>
+                            {% else %}
+                                <tr><td colspan="5" class="py-6 text-center text-xs text-slate-400">Aucune donnée.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel bg-gradient-to-br from-indigo-600 to-violet-700 text-white lg:col-span-2">
+                <div class="flex h-full flex-col">
+                    <div class="flex items-center gap-2 text-indigo-200">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path stroke-linecap="round" d="M4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"/></svg>
+                        <span class="text-[10px] font-bold uppercase tracking-[0.16em]">Gouvernance</span>
+                    </div>
+                    <h3 class="mt-3 text-lg font-bold">Analysez vos données</h3>
+                    <p class="mt-1 text-sm leading-relaxed text-indigo-100">
+                        Importez un fichier CSV, Excel, JSON ou une base SQLite pour mesurer la complétude, l'unicité, la cohérence, les doublons et les données personnelles.
+                    </p>
+                    <div class="mt-auto pt-4">
+                        <a href="/data" class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50">
+                            Ouvrir l'atelier données
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
+                        </a>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <p class="mt-8 text-center text-[10px] text-slate-400">
+            Indicateurs calculés localement à partir de la base SQLite. Les temps incluent la génération complète de la réponse.
+        </p>
+    </div>
+</div>
+{% endblock %}
